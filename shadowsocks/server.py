@@ -29,11 +29,11 @@ from shadowsocks import shell, daemon, eventloop, tcprelay, udprelay, \
 
 
 def main():
-    shell.check_python()
+    shell.check_python()   #检查python版本
 
-    config = shell.get_config(False)
+    config = shell.get_config(False)    #从配置文件,命令行等获取参数
 
-    daemon.daemon_exec(config)
+    daemon.daemon_exec(config)    #根据'daemon'参数来start,stop或restart ssserver
 
     if config['port_password']:
         if config['password']:

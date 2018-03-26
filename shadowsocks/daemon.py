@@ -92,9 +92,13 @@ def freopen(f, mode, stream):
 
 def daemon_start(pid_file, log_file):
 
+    # 信号处理函数的第二个参数为接收信号时的current stack frame
+    # _是一个临时变量名称,表示后续不再关注和使用该变量
     def handle_exit(signum, _):
+        # stop ssserver时会发送SIGTERM
         if signum == signal.SIGTERM:
             sys.exit(0)
+        # 异常退出是指收到SIGINT信号,比如ctrl+C
         sys.exit(1)
 
     signal.signal(signal.SIGINT, handle_exit)
