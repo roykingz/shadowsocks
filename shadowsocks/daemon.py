@@ -60,6 +60,9 @@ def write_pid_file(pid_file, pid):
     except OSError as e:
         shell.print_exception(e)
         return -1
+    # fcntl函数出错时返回-1
+    # F_GETFD表示获取文件描述符标志,Unix只定义了一个文件描述符标志,
+    # 就是FD_CLOEXEC(执行时关闭)
     flags = fcntl.fcntl(fd, fcntl.F_GETFD)
     assert flags != -1
     flags |= fcntl.FD_CLOEXEC
@@ -68,8 +71,11 @@ def write_pid_file(pid_file, pid):
     # There is no platform independent way to implement fcntl(fd, F_SETLK, &fl)
     # via fcntl.fcntl. So use lockf instead
     try:
+        # lockf实现了fcntl函数的记录锁动作,具体参照apue14.3和python fcntl模块
+        # 此处的lockf以不阻塞的方式获取一个排他的写锁
         fcntl.lockf(fd, fcntl.LOCK_EX | fcntl.LOCK_NB, 0, 0, os.SEEK_SET)
     except IOError:
+        # lockf抛出IOError表示排他记录锁已被其他进程占有
         r = os.read(fd, 32)
         if r:
             logging.error('already started at pid %s' % common.to_str(r))
@@ -92,7 +98,7 @@ def freopen(f, mode, stream):
 
 def daemon_start(pid_file, log_file):
 
-    # 信号处理函数的第二个参数为接收信号时的current stack frame
+    # 信号处理函数的第二个参数为收到信号时的current stack frame
     # _是一个临时变量名称,表示后续不再关注和使用该变量
     def handle_exit(signum, _):
         # stop ssserver时会发送SIGTERM
@@ -120,13 +126,17 @@ def daemon_start(pid_file, log_file):
         os.kill(ppid, signal.SIGINT)
         sys.exit(1)
 
+    # 结合上下文,执行的是创建守护进程的标准步骤,参照apue 13.3节,顺序与书中不太一致
     os.setsid()
+    # 一般情况,终端退出是会给其创建的进程发送SIGHUP
+    # 由于setsid函数会让进程脱离控制终端,该signal函数是否有必要?
     signal.signal(signal.SIG_IGN, signal.SIGHUP)
 
     print('started')
     os.kill(ppid, signal.SIGTERM)
 
     sys.stdin.close()
+    # 将log文件分别在stdout和stderr的描述符上打开,用到了dup2函数.
     try:
         freopen(log_file, 'a', sys.stdout)
         freopen(log_file, 'a', sys.stderr)

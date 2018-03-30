@@ -56,6 +56,7 @@ def main():
 
     tcp_servers = []
     udp_servers = []
+    # 类DNSResolver初始化时会从/etc/hosts和/etc/resolv.conf中获取hostname和dns
     dns_resolver = asyncdns.DNSResolver()
     port_password = config['port_password']
     del config['port_password']
