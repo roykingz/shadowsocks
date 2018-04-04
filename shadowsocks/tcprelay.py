@@ -571,15 +571,21 @@ class TCPRelay(object):
             listen_port = config['server_port']
         self._listen_port = listen_port
 
+        # getaddrinfo获取创建socket和bind socket用到的五元组
         addrs = socket.getaddrinfo(listen_addr, listen_port, 0,
                                    socket.SOCK_STREAM, socket.SOL_TCP)
         if len(addrs) == 0:
             raise Exception("can't get addrinfo for %s:%d" %
                             (listen_addr, listen_port))
+        # sa是ip和port的二元组
         af, socktype, proto, canonname, sa = addrs[0]
         server_socket = socket.socket(af, socktype, proto)
+        # 函数原型setsockopt(level, optname, value: int),SO_REUSEADDR的作用就是告诉
+        # 内核对于处于TIME_WAIT状态的socket可以直接重用,无需等待它自然超时.
+        # 需要继续阅读unp.
         server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server_socket.bind(sa)
+        # 设置socket为非阻塞
         server_socket.setblocking(False)
         if config['fast_open']:
             try:
@@ -587,6 +593,9 @@ class TCPRelay(object):
             except socket.error:
                 logging.error('warning: fast open is not available')
                 self._config['fast_open'] = False
+        # listen参数意义:it specifies the number of unaccepted connections that
+        # the system will allow before refusing new connections.
+        # 意思就是未被accept的连接超过1024个之后,系统就会refuse之后新来的连接
         server_socket.listen(1024)
         self._server_socket = server_socket
         self._stat_callback = stat_callback
