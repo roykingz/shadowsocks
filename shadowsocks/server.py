@@ -23,6 +23,8 @@ import os
 import logging
 import signal
 
+# sys.path是Python搜索模块路径集，是个list，这里将ss的目录也添加进去放在最前面
+# 这里添加的是最上层的那个ss目录，而非.py源代码所在的那个ss目录
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../'))
 from shadowsocks import shell, daemon, eventloop, tcprelay, udprelay, \
     asyncdns, manager
@@ -72,11 +74,18 @@ def main():
     def run_server():
         def child_handler(signum, _):
             logging.warn('received SIGQUIT, doing graceful shutting down..')
+            # map(function, sequence[, sequence, ...]) -> list 将function函数作用到
+            # sequence中的每一个元素，也就是关掉上面打开的所有的socket
             list(map(lambda s: s.close(next_tick=True),
                      tcp_servers + udp_servers))
+        # 注册SIGQUIT或SIGTERM的信号处理函数，Windows不支持SIGQUIT而Linux支持，所以为了
+        # 跨平台兼容，此处使用了getattr函数
+        # 在调用exec前，子进程会继承父进程注册的信号处理action，这里在子进程中重新注册
+        # 了SIGTERM信号的处理action，不出意外，signal函数会返回上一次注册的action
         signal.signal(getattr(signal, 'SIGQUIT', signal.SIGTERM),
                       child_handler)
 
+        # 为SIGINT注册信号处理函数
         def int_handler(signum, _):
             sys.exit(1)
         signal.signal(signal.SIGINT, int_handler)
