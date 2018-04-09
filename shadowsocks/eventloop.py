@@ -145,12 +145,15 @@ class SelectLoop(object):
 class EventLoop(object):
     def __init__(self):
         if hasattr(select, 'epoll'):
+            # epoll是个class,Only supported on Linux 2.5.44 and newer
             self._impl = select.epoll()
             model = 'epoll'
         elif hasattr(select, 'kqueue'):
+            # Only supported on BSD
             self._impl = KqueueLoop()
             model = 'kqueue'
         elif hasattr(select, 'select'):
+            # This is for Windows
             self._impl = SelectLoop()
             model = 'select'
         else:
