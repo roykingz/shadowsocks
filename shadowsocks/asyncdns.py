@@ -310,6 +310,7 @@ class DNSResolver(object):
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM,
                                    socket.SOL_UDP)
         self._sock.setblocking(False)
+        # 将dns socket注册到epoll事件表中
         loop.add(self._sock, eventloop.POLL_IN, self)
         loop.add_periodic(self.handle_periodic)
 
