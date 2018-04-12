@@ -93,10 +93,13 @@ BUF_SIZE = 32 * 1024
 class TCPRelayHandler(object):
     def __init__(self, server, fd_to_handlers, loop, local_sock, config,
                  dns_resolver, is_local):
+        # 这里的_server被赋予了一个TCPRelay object
         self._server = server
+        # 此处fd_to_handlers参数来自TCPRelay对象的_fd_to_handlers,初始为{}
         self._fd_to_handlers = fd_to_handlers
         self._loop = loop
         self._local_sock = local_sock
+        # _remote_sock指是ssserver与真正目标服务器(如Google,FaceBook等)的socket
         self._remote_sock = None
         self._config = config
         self._dns_resolver = dns_resolver
@@ -112,6 +115,7 @@ class TCPRelayHandler(object):
         self._data_to_write_to_remote = []
         self._upstream_status = WAIT_STATUS_READING
         self._downstream_status = WAIT_STATUS_INIT
+        # socket.getpeername()返回socket对端(也就是client端)的(hostaddr, port)
         self._client_address = local_sock.getpeername()[:2]
         self._remote_address = None
         if 'forbidden_ip' in config:
@@ -120,9 +124,14 @@ class TCPRelayHandler(object):
             self._forbidden_iplist = None
         if is_local:
             self._chosen_server = self._get_a_server()
+        # 这里更新的是TCPRelay对象的_fd_to_handlers,而非自己的
         fd_to_handlers[local_sock.fileno()] = self
         local_sock.setblocking(False)
+        # TCP_NODELAY选项关闭Nagle算法, 现在的TCP/IP协议栈默认就关闭Nagle算法
+        # Nagle算法通俗解释见https://www.zhihu.com/question/42308970
         local_sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, 1)
+        # 这里add的sock是local_sock,但是handler却是_server,也就是说发生事件时,仍然是先
+        # 调用TCPRelay的handler_event,由其负责分发到不同的local_sock的handler上
         loop.add(local_sock, eventloop.POLL_IN | eventloop.POLL_ERR,
                  self._server)
         self.last_activity = 0
@@ -555,6 +564,8 @@ class TCPRelay(object):
         self._dns_resolver = dns_resolver
         self._closed = False
         self._eventloop = None
+        # _fd_to_handlers的格式为{fd:TCPRelayHandler实例},存储了每个client连接的fd以
+        # 及所对应TCPRelayHandler对象
         self._fd_to_handlers = {}
 
         self._timeout = config['timeout']
@@ -674,13 +685,16 @@ class TCPRelay(object):
         if sock:
             logging.log(shell.VERBOSE_LEVEL, 'fd %d %s', fd,
                         eventloop.EVENT_NAMES.get(event, event))
+        # 若是_server_socket上的事件,证明是新连接到来,需要accept之
         if sock == self._server_socket:
             if event & eventloop.POLL_ERR:
                 # TODO
                 raise Exception('server_socket error')
             try:
                 logging.debug('accept')
+                # accept函数返回(socket object, address info)
                 conn = self._server_socket.accept()
+                # 每收到一个新连接,都创建一个TCPRelayHandler实例来处理这个连接
                 TCPRelayHandler(self, self._fd_to_handlers,
                                 self._eventloop, conn[0], self._config,
                                 self._dns_resolver, self._is_local)
