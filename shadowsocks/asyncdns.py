@@ -358,6 +358,7 @@ class DNSResolver(object):
             return
         if event & eventloop.POLL_ERR:
             logging.error('dns socket err')
+            # unregister此socket,然后关闭之,然后重新开启一个socket用于dns并注册到epoll
             self._loop.remove(self._sock)
             self._sock.close()
             # TODO when dns server is IPv6
@@ -366,10 +367,13 @@ class DNSResolver(object):
             self._sock.setblocking(False)
             self._loop.add(self._sock, eventloop.POLL_IN, self)
         else:
+            # recvfrom的参数为bufsize,返回值为(data,addr),data为bytes类型,addr为对端
+            # socket地址(ip+port)
             data, addr = sock.recvfrom(1024)
             if addr[0] not in self._servers:
                 logging.warn('received a packet other than our dns')
                 return
+            # 解析DNS内容,暂时略过
             self._handle_data(data)
 
     def handle_periodic(self):

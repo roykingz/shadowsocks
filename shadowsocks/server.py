@@ -92,6 +92,7 @@ def main():
 
         try:
             loop = eventloop.EventLoop()
+            # 将dns以及之前tcp, udp的socket都注册到epoll事件表中
             dns_resolver.add_to_loop(loop)
             list(map(lambda s: s.add_to_loop(loop), tcp_servers + udp_servers))
 

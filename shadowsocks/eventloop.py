@@ -34,7 +34,7 @@ from shadowsocks import shell
 
 __all__ = ['EventLoop', 'POLL_NULL', 'POLL_IN', 'POLL_OUT', 'POLL_ERR',
            'POLL_HUP', 'POLL_NVAL', 'EVENT_NAMES']
-
+# 这里的常量编码与select模块中EPOLL_以及POLL_相关的常量编码一致
 POLL_NULL = 0x00
 POLL_IN = 0x01
 POLL_OUT = 0x04
@@ -197,6 +197,9 @@ class EventLoop(object):
         while not self._stopping:
             asap = False
             try:
+                # 这里调用的是自定义的poll函数,它返回一个三元组的list,在fd和event之前增
+                # 加了一个socket对象
+                # 若超时,则events为[],直接执行到now = time.time()语句
                 events = self.poll(TIMEOUT_PRECISION)
             except (OSError, IOError) as e:
                 if errno_from_exception(e) in (errno.EPIPE, errno.EINTR):
@@ -214,13 +217,18 @@ class EventLoop(object):
             for sock, fd, event in events:
                 handler = self._fdmap.get(fd, None)
                 if handler is not None:
+                    # 这里handler就是相关处理类(比如TCPRelay, DNSResolver等)的实例
                     handler = handler[1]
                     try:
                         handler.handle_event(sock, fd, event)
                     except (OSError, IOError) as e:
                         shell.print_exception(e)
             now = time.time()
+            # 超时处理
+            # 从__init__函数可知_last_time一开始是eventloop初始化的时间
             if asap or now - self._last_time >= TIMEOUT_PRECISION:
+                # 所有的socket注册到loop中时都会将自己的超时处理函数添加到
+                # _periodic_callbacks列表中
                 for callback in self._periodic_callbacks:
                     callback()
                 self._last_time = now
