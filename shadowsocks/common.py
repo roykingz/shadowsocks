@@ -144,6 +144,7 @@ def parse_header(data):
     dest_addr = None
     dest_port = None
     header_length = 0
+    # addrtype表示地址格式(定义了3种:IPV4,域名,IPV6)
     if addrtype == ADDRTYPE_IPV4:
         if len(data) >= 7:
             dest_addr = socket.inet_ntoa(data[1:5])
@@ -153,9 +154,14 @@ def parse_header(data):
             logging.warn('header is too short')
     elif addrtype == ADDRTYPE_HOST:
         if len(data) > 2:
+            # data[1]是地址的长度,因为data是str类型,所以要使用ord函数将data[1]转化为数字
+            # 调试中,发现data[1]为'\n',ord(data[1])为10,说明后面的地址长度为10,测试使用
+            # 的地址为google.com
             addrlen = ord(data[1])
             if len(data) >= 2 + addrlen:
                 dest_addr = data[2:2 + addrlen]
+                # unpack用于转换C结构体和python bytes,第一个参数指定格式,比如'>H'表示大
+                # 端字节序,类型为unsigned short,详见python标准库
                 dest_port = struct.unpack('>H', data[2 + addrlen:4 +
                                                      addrlen])[0]
                 header_length = 4 + addrlen

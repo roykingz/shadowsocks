@@ -113,6 +113,7 @@ class TCPRelayHandler(object):
         self._fastopen_connected = False
         self._data_to_write_to_local = []
         self._data_to_write_to_remote = []
+        # UP和DOWN两个方向的流的初始状态不同
         self._upstream_status = WAIT_STATUS_READING
         self._downstream_status = WAIT_STATUS_INIT
         # socket.getpeername()返回socket对端(也就是client端)的(hostaddr, port)
@@ -124,7 +125,7 @@ class TCPRelayHandler(object):
             self._forbidden_iplist = None
         if is_local:
             self._chosen_server = self._get_a_server()
-        # 这里更新的是TCPRelay对象的_fd_to_handlers,而非自己的
+        # 更新_fd_to_handlers
         fd_to_handlers[local_sock.fileno()] = self
         local_sock.setblocking(False)
         # TCP_NODELAY选项关闭Nagle算法, 现在的TCP/IP协议栈默认就关闭Nagle算法
@@ -178,15 +179,21 @@ class TCPRelayHandler(object):
         if dirty:
             if self._local_sock:
                 event = eventloop.POLL_ERR
+                # 下面这个两个if语句涵盖了两种情况下我们对local_sock所关注的事件
+                # 当想往下行方向写时,要关注local_sock的是否可写
                 if self._downstream_status & WAIT_STATUS_WRITING:
                     event |= eventloop.POLL_OUT
+                # 当上行方向想读数据时,要关注local_sock是否能读到数据
                 if self._upstream_status & WAIT_STATUS_READING:
                     event |= eventloop.POLL_IN
                 self._loop.modify(self._local_sock, event)
             if self._remote_sock:
                 event = eventloop.POLL_ERR
+                # 下面这个两个if语句涵盖了两种情况下我们对remote_sock所关注的事件
+                # 当下行方向想读数据时,要关注remote_sock是否能读到数据
                 if self._downstream_status & WAIT_STATUS_READING:
                     event |= eventloop.POLL_IN
+                # 当想往上行方向写时,要关注remote_sock是否可写
                 if self._upstream_status & WAIT_STATUS_WRITING:
                     event |= eventloop.POLL_OUT
                 self._loop.modify(self._remote_sock, event)
@@ -298,6 +305,7 @@ class TCPRelayHandler(object):
             header_result = parse_header(data)
             if header_result is None:
                 raise Exception('can not parse header')
+            # 这里的拿到的addr仍未域名,下面会调用dns解析
             addrtype, remote_addr, remote_port, header_length = header_result
             logging.info('connecting %s:%d from %s:%d' %
                          (common.to_str(remote_addr), remote_port,
@@ -320,6 +328,7 @@ class TCPRelayHandler(object):
                 if len(data) > header_length:
                     self._data_to_write_to_remote.append(data[header_length:])
                 # notice here may go into _handle_dns_resolved directly
+                # handle_dns_resolved会在DNS解析成功后调用,继续该TCP连接上的处理
                 self._dns_resolver.resolve(remote_addr,
                                            self._handle_dns_resolved)
         except Exception as e:
@@ -350,10 +359,10 @@ class TCPRelayHandler(object):
             self._log_error(error)
             self.destroy()
             return
+        # result是(hostname,ip)
         if result:
             ip = result[1]
             if ip:
-
                 try:
                     self._stage = STAGE_CONNECTING
                     remote_addr = ip
@@ -372,6 +381,9 @@ class TCPRelayHandler(object):
                         # TODO when there is already data in this packet
                     else:
                         # else do connect
+                        # _create_remote_socket仅创建一个socket,传入ip+port是为了
+                        # 根据ip格式判断和生成协议类型,IPV4还是IPV6,并确定该IP是否被
+                        # forbidden
                         remote_sock = self._create_remote_socket(remote_addr,
                                                                  remote_port)
                         try:
@@ -384,6 +396,7 @@ class TCPRelayHandler(object):
                                        eventloop.POLL_ERR | eventloop.POLL_OUT,
                                        self._server)
                         self._stage = STAGE_CONNECTING
+                        # 此处更新UP和DOWN两个方向的流的状态,并修改epoll事件表
                         self._update_stream(STREAM_UP, WAIT_STATUS_READWRITING)
                         self._update_stream(STREAM_DOWN, WAIT_STATUS_READING)
                     return
@@ -410,11 +423,14 @@ class TCPRelayHandler(object):
             self.destroy()
             return
         self._update_activity(len(data))
+        # 对于ssserver,将从local读到的数据解密
         if not is_local:
             data = self._encryptor.decrypt(data)
             if not data:
                 return
+        # 若处于STAGE_STREAM状态,也就是与remote_server已连接,正常通信
         if self._stage == STAGE_STREAM:
+            # 对于sslocal,
             if self._is_local:
                 data = self._encryptor.encrypt(data)
             self._write_to_sock(data, self._remote_sock)
@@ -494,6 +510,8 @@ class TCPRelayHandler(object):
             logging.debug('ignore handle_event: destroyed')
             return
         # order is important
+        # 通常TCP中POLL_ERR意味着收到了RST, POLL_HUP意味着对端shutdown了socket;
+        # 这两种情况下socket都是open状态,因此我们应该调用close释放资源
         if sock == self._remote_sock:
             if event & eventloop.POLL_ERR:
                 self._on_remote_error()

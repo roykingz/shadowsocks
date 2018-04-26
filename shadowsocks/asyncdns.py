@@ -315,6 +315,7 @@ class DNSResolver(object):
         loop.add_periodic(self.handle_periodic)
 
     def _call_callback(self, hostname, ip, error=None):
+        # callback是之前触发DNS请求的TCPRelayHandler注册的回调函数,当DNS解析成功后调用
         callbacks = self._hostname_to_cb.get(hostname, [])
         for callback in callbacks:
             if callback in self._cb_to_hostname:
@@ -344,6 +345,8 @@ class DNSResolver(object):
                 self._hostname_status[hostname] = STATUS_IPV6
                 self._send_req(hostname, QTYPE_AAAA)
             else:
+                # 若DNS解析成功,则缓存该hostname信息,并调用_call_callback继续之前TCP连
+                # 接上的处理,该TCP连接触发的DNS请求,是一个TCPRelayHandler实例
                 if ip:
                     self._cache[hostname] = ip
                     self._call_callback(hostname, ip)
@@ -373,7 +376,10 @@ class DNSResolver(object):
             if addr[0] not in self._servers:
                 logging.warn('received a packet other than our dns')
                 return
-            # 解析DNS内容,暂时略过
+            # 解析DNS内容.
+            # 通常收到DNS应答都是因为之前的一个TCP连接触发了DNS请求,因此收到DNS应答后需要
+            # 继续之前TCP连接上的处理,这就续上了TCPRelayHandler的handle_event中
+            # _on_local_read方法
             self._handle_data(data)
 
     def handle_periodic(self):
