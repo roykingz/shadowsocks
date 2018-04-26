@@ -207,6 +207,7 @@ class TCPRelayHandler(object):
         uncomplete = False
         try:
             l = len(data)
+            # send返回已发送的数据的长度,网络繁忙时可能出现s<l的情况
             s = sock.send(data)
             if s < l:
                 data = data[s:]
