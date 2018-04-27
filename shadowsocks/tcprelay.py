@@ -208,6 +208,7 @@ class TCPRelayHandler(object):
         try:
             l = len(data)
             # send返回已发送的数据的长度,网络繁忙时可能出现s<l的情况
+            # 代码逻辑一路走到这里,全程没有查看local_sock是否可写
             s = sock.send(data)
             if s < l:
                 data = data[s:]
@@ -466,6 +467,10 @@ class TCPRelayHandler(object):
         else:
             data = self._encryptor.encrypt(data)
         try:
+            # 注意收到remote_server的数据后并没有查看local_sock是否可写就直接写,感觉这里
+            # 的逻辑有点问题.(调试的时候死活看不到local_sock的POLL_OUT事件,原因在这里)
+            # 为了逻辑上的严密,以及防止local_sock不可写状况出现,这里可以考虑先将POLL_OUT
+            # 加入local_sock的事件表,然后返回loop.run(),等待下一次poll触发写事件
             self._write_to_sock(data, self._local_sock)
         except Exception as e:
             shell.print_exception(e)
